@@ -9,7 +9,13 @@ import scala.collection.mutable.{Buffer, ArrayBuffer}
 /**
  * @author sameer
  */
-class Rule(val head: NonTerminal, val tails: Seq[Node]*) {
+trait AbstractRule {
+  def head: NonTerminal
+
+  def sample(rules: RuleSet, random: Random): Seq[Terminal]
+}
+
+class Rule(val head: NonTerminal, val tails: Seq[Node]*) extends AbstractRule {
   def sample(rules: RuleSet, random: Random): Seq[Terminal] = {
     // pick a tail
     val tail = tails(random.nextInt(tails.length))
@@ -40,14 +46,31 @@ object WordList {
     apply(head, new FileInputStream(filename))
 }
 
-class RuleSet(val rules: Seq[Rule]) {
-  val _map = new HashMap[NonTerminal, Buffer[Rule]]
+class WithDeterminer(val head: NonTerminal, val tail: Node, val capitalized: Boolean = false) extends AbstractRule {
+
+  def sample(rules: RuleSet, random: Random) = {
+    // pick the terminals (recursively)
+    val terms = tail match {
+      case t: Terminal => Seq(t)
+      case n: NonTerminal => rules(n, random).sample(rules, random)
+    }
+    val beg = terms(0).string(0).toLower
+    var det = "a"
+    if (beg == 'a' || beg == 'e' || beg == 'i' || beg == 'o' || beg == 'u') det = "an"
+    if (random.nextDouble() < 0.5) det = "the"
+    if (capitalized) det = det.capitalize
+    Seq(Word(det), Space) ++ terms
+  }
+}
+
+class RuleSet(val rules: Seq[AbstractRule]) {
+  val _map = new HashMap[NonTerminal, Buffer[AbstractRule]]
   rules.foreach(r => _map.getOrElseUpdate(r.head, new ArrayBuffer) += r)
 
-  def apply(n: NonTerminal, random: Random): Rule = _map(n)(random.nextInt(_map(n).length))
+  def apply(n: NonTerminal, random: Random): AbstractRule = _map(n)(random.nextInt(_map(n).length))
 }
 
 object RuleSet {
   //def apply(rules: Seq[Rule]) = new RuleSet(rules)
-  def apply(rules: Rule*): RuleSet = new RuleSet(rules.toSeq)
+  def apply(rules: AbstractRule*): RuleSet = new RuleSet(rules.toSeq)
 }
